@@ -36,7 +36,11 @@ func main() {
 		port = ":" + port
 	}
 
-	err := services.Connect("127.0.0.1:55002") // TODO: fix this
+	ip := os.Getenv("EXTERNAL_IP")
+	if ip == "" {
+		ip = "127.0.0.1"
+	}
+	err := services.Connect(ip + ":55002") // TODO: fix this
 	if err != nil {
 		panic(err)
 	}
