@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	services "github.com/flynn/go-discoverd"
+	"github.com/flynn/flynn-host/types"
 	"github.com/flynn/go-dockerclient"
-	hosts "github.com/flynn/lorne/client"
-	"github.com/flynn/lorne/types"
-	jobs "github.com/flynn/sampi/client"
-	"github.com/flynn/sampi/types"
+	"github.com/flynn/go-flynn/cluster"
 )
 
 type flushWriter struct {
@@ -37,26 +34,31 @@ func FlushWriter(writer io.Writer) flushWriter {
 }
 
 func batchHandler(w http.ResponseWriter, r *http.Request) {
-	sched, err := jobs.New()
+	client, err := cluster.NewClient()
 	if error500(w, err) {
 		return
 	}
 
-	s, err := services.Services("flynn-lorne", services.DefaultTimeout)
+	hosts, err := client.ListHosts()
 	if error500(w, err) {
 		return
 	}
-	hostid := s[0].Attrs["id"]
-	jobid := jobs.RandomJobID("batch")
+	var hostid string
+	for id, _ := range hosts {
+		hostid = id
+		break
+	}
 
-	host, err := hosts.New(hostid)
+	jobid := cluster.RandomJobID(strings.TrimPrefix(r.URL.Path, "/batch/"))
+
+	hostClient, err := client.ConnectHost(hostid)
 	if error500(w, err) {
 		return
 	}
 
-	conn, attachWait, err := host.Attach(&lorne.AttachReq{
+	conn, attachWait, err := hostClient.Attach(&host.AttachReq{
 		JobID: jobid,
-		Flags: lorne.AttachFlagStdout | lorne.AttachFlagStderr | lorne.AttachFlagStdin | lorne.AttachFlagStream,
+		Flags: host.AttachFlagStdout | host.AttachFlagStderr | host.AttachFlagStdin | host.AttachFlagStream,
 	}, true)
 	if error500(w, err) {
 		return
@@ -72,13 +74,14 @@ func batchHandler(w http.ResponseWriter, r *http.Request) {
 		OpenStdin:    false,
 		StdinOnce:    false,
 	}
-
-	schedReq := &sampi.ScheduleReq{
+	
+	jobReq := &host.AddJobsReq{
 		Incremental: true,
-		HostJobs: map[string][]*sampi.Job{
-			hostid: {{ID: jobid, Config: &config}}},
+		HostJobs: map[string][]*host.Job{
+			hostid: {{ID: jobid, Config: &config, TCPPorts: 0}}},
 	}
-	_, err = sched.Schedule(schedReq)
+
+	_, err = client.AddJobs(jobReq)
 	if error500(w, err) {
 		return
 	}
