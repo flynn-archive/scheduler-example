@@ -40,7 +40,7 @@ func main() {
 	if ip == "" {
 		ip = "127.0.0.1"
 	}
-	err := services.Connect(ip + ":55002") // TODO: fix this
+	err := services.Connect(ip + ":1111") // TODO: fix this
 	if err != nil {
 		panic(err)
 	}
